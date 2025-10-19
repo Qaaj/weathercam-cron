@@ -1,7 +1,7 @@
 name: BirdWeather uploader
 on:
   schedule:
-    - cron: "30 8,16 * * *"   # 8 AM and 4 PM Atlantic Time
+    - cron: "*/20 * * * *"
   workflow_dispatch:
 
 jobs:
