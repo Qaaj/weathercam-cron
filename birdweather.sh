@@ -10,6 +10,9 @@ REFRESH_TOKEN="$DROPBOX_REFRESH_TOKEN"
 PG_CONN="$PG_CONN"
 BIRDWEATHER_ID="$BIRDWEATHER_ID"
 
+DATESTAMP=$(date +%Y%m%d)
+DAY_SUMMARY_FILE="$DIR/bird_summary_${DATESTAMP}.json"
+
 # ---------------------------------------------------------------------
 # Get Dropbox token
 ACCESS_TOKEN=$(curl -s -u "$APP_KEY:$APP_SECRET" \
@@ -30,22 +33,14 @@ DIR="cache"
 mkdir -p "$DIR"
 TIMESTAMP=$(date +%Y%m%d_%H%M%S)
 OUT_FILE="$DIR/bird_detections_${TIMESTAMP}.json"
-echo "$DATA" > "$OUT_FILE"
+echo "$DATA" > "$DAY_SUMMARY_FILE"
 
-# ---------------------------------------------------------------------
-# Upload raw GraphQL JSON to Dropbox (timestamped + latest)
-echo "Uploading raw detections to Dropbox..."
+# Upload (will overwrite same file until date changes)
 curl -s -X POST https://content.dropboxapi.com/2/files/upload \
   --header "Authorization: Bearer $ACCESS_TOKEN" \
-  --header "Dropbox-API-Arg: {\"path\": \"/WeatherCam/bird_detections_${TIMESTAMP}.json\", \"mode\": \"add\", \"autorename\": true}" \
+  --header "Dropbox-API-Arg: {\"path\": \"/WeatherCam/bird_summary_${DATESTAMP}.json\", \"mode\": \"overwrite\"}" \
   --header "Content-Type: application/octet-stream" \
-  --data-binary @"$OUT_FILE"
-
-curl -s -X POST https://content.dropboxapi.com/2/files/upload \
-  --header "Authorization: Bearer $ACCESS_TOKEN" \
-  --header "Dropbox-API-Arg: {\"path\": \"/WeatherCam/bird_detections_latest.json\", \"mode\": \"overwrite\"}" \
-  --header "Content-Type: application/octet-stream" \
-  --data-binary @"$OUT_FILE"
+  --data-binary @"$DAY_SUMMARY_FILE"
 
 echo "✅ Uploaded raw detections (${TIMESTAMP})"
 
