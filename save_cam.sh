@@ -42,11 +42,20 @@ curl -s -o "$JSON_FILE" "$DATA_URL"
 # ---------------------------------------------------------------------
 # Attempt to download the previous latest.jpg from Dropbox
 echo "Fetching latest.jpg from Dropbox..."
-if ! curl -L --fail -s -X POST https://content.dropboxapi.com/2/files/download \
+# Save HTTP code and response body for debugging
+HTTP_CODE=$(curl -L -s -w "%{http_code}" -o "$LATEST_IMG" \
+  -X POST https://content.dropboxapi.com/2/files/download \
   --header "Authorization: Bearer $ACCESS_TOKEN" \
-  --header 'Dropbox-API-Arg: {"path": "/WeatherCam/latest.jpg"}' \
-  -o "$LATEST_IMG"; then
-  echo "⚠️  No valid latest.jpg found (first run or fetch failed)."
+  --header 'Dropbox-API-Arg: {"path": "/WeatherCam/latest.jpg"}' )
+
+if [ "$HTTP_CODE" != "200" ]; then
+  echo "⚠️  Dropbox download failed (HTTP $HTTP_CODE)"
+  echo "---- Response ----"
+  cat "$LATEST_IMG" || true
+  echo "------------------"
+  rm -f "$LATEST_IMG"
+else
+  echo "✅ latest.jpg downloaded successfully ($(stat -c%s "$LATEST_IMG") bytes)"
 fi
 
 # ---------------------------------------------------------------------
