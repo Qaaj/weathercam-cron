@@ -2,7 +2,7 @@
 set -e
 export TZ="America/Halifax"
 
-# Skip if nighttime (6 AM–8 PM Halifax)
+# Skip if nighttime (6 AM – 8 PM Halifax)
 hour=$(date +%H)
 if [ "$hour" -lt 6 ] || [ "$hour" -ge 20 ]; then
   echo "Nighttime in Nova Scotia ($hour h) – skipping run."
@@ -26,12 +26,12 @@ IMG_FILE="$DIR/${TIMESTAMP}.jpg"
 JSON_FILE="$DIR/${TIMESTAMP}.json"
 LATEST_IMG="$DIR/latest.jpg"
 
-# Get Dropbox access token
+# Dropbox short-lived token
 ACCESS_TOKEN=$(curl -s -u "$APP_KEY:$APP_SECRET" \
   -d "grant_type=refresh_token&refresh_token=$REFRESH_TOKEN" \
   https://api.dropboxapi.com/oauth2/token | jq -r .access_token)
 
-# Download current image and AmbientWeather data
+# Download new image + JSON
 curl -s -o "$IMG_FILE" "$CAM_URL"
 curl -s -o "$JSON_FILE" "$DATA_URL"
 
@@ -41,25 +41,31 @@ curl -s -X POST https://content.dropboxapi.com/2/files/download \
   --header 'Dropbox-API-Arg: {"path": "/WeatherCam/latest.jpg"}' \
   -o "$LATEST_IMG" || true
 
-# Compare via SHA-256 hash
+# --- Visual comparison using ImageMagick thumbnail hashing ---
 SHOULD_UPLOAD=1
 if [ -f "$LATEST_IMG" ]; then
-  HASH_NEW=$(sha256sum "$IMG_FILE" | cut -d' ' -f1)
-  HASH_OLD=$(sha256sum "$LATEST_IMG" | cut -d' ' -f1)
-  echo "New:  $HASH_NEW"
+  convert "$IMG_FILE"    -resize 64x64 -colorspace Gray "$DIR/new_small.jpg"
+  convert "$LATEST_IMG"  -resize 64x64 -colorspace Gray "$DIR/old_small.jpg"
+  HASH_NEW=$(sha256sum "$DIR/new_small.jpg" | cut -d' ' -f1)
+  HASH_OLD=$(sha256sum "$DIR/old_small.jpg" | cut -d' ' -f1)
+  echo "Thumbnail hashes:"
+  echo "New : $HASH_NEW"
   echo "Prev: $HASH_OLD"
   if [ "$HASH_NEW" = "$HASH_OLD" ]; then
-    echo "Image identical – skipping upload."
+    echo "Visually identical – skipping upload."
     SHOULD_UPLOAD=0
   fi
 fi
+# -------------------------------------------------------------
 
 if [ "$SHOULD_UPLOAD" -eq 0 ]; then
   rm -rf "$DIR"
   exit 0
 fi
 
-# Upload new timestamped image + JSON
+echo "Uploading new image and JSON..."
+
+# Upload timestamped image + JSON
 curl -s -X POST https://content.dropboxapi.com/2/files/upload \
   --header "Authorization: Bearer $ACCESS_TOKEN" \
   --header "Dropbox-API-Arg: {\"path\": \"/WeatherCam/${TIMESTAMP}.jpg\", \"mode\": \"add\", \"autorename\": true}" \
@@ -72,7 +78,7 @@ curl -s -X POST https://content.dropboxapi.com/2/files/upload \
   --header "Content-Type: application/octet-stream" \
   --data-binary @"$JSON_FILE"
 
-# Update latest copies (overwrite)
+# Update latest files (overwrite)
 curl -s -X POST https://content.dropboxapi.com/2/files/upload \
   --header "Authorization: Bearer $ACCESS_TOKEN" \
   --header "Dropbox-API-Arg: {\"path\": \"/WeatherCam/latest.jpg\", \"mode\": \"overwrite\"}" \
@@ -86,4 +92,4 @@ curl -s -X POST https://content.dropboxapi.com/2/files/upload \
   --data-binary @"$JSON_FILE"
 
 rm -rf "$DIR"
-echo "Uploaded ${TIMESTAMP}.jpg and ${TIMESTAMP}.json (Nova Scotia local time)"
+echo "Uploaded ${TIMESTAMP}.jpg and ${TIMESTAMP}.json (NS local time)"
