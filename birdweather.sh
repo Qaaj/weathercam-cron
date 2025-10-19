@@ -17,24 +17,25 @@ ACCESS_TOKEN=$(curl -s -u "$APP_KEY:$APP_SECRET" \
   https://api.dropboxapi.com/oauth2/token | jq -r .access_token)
 
 # ---------------------------------------------------------------------
-# Fetch BirdWeather detections (500 latest)
-QUERY="{ station(id: ${BIRDWEATHER_ID}) { detections(last: 500) { edges { node { id confidence timestamp species { id commonName scientificName } } } } } }"
+# Prepare directories and filenames
+DIR="cache"
+mkdir -p "$DIR"
+DATESTAMP=$(date +%Y%m%d)
+TIMESTAMP=$(date +%Y%m%d_%H%M%S)
+DAY_SUMMARY_FILE="$DIR/bird_summary_${DATESTAMP}.json"
+
+# ---------------------------------------------------------------------
+# Fetch BirdWeather detections (last 100)
+QUERY="{ station(id: ${BIRDWEATHER_ID}) { detections(last: 100) { edges { node { id confidence timestamp species { id commonName scientificName } } } } } }"
 echo "Fetching BirdWeather detections for station ${BIRDWEATHER_ID}..."
 DATA=$(curl -s -X POST https://app.birdweather.com/graphql \
   -H "Content-Type: application/json" \
   -d "{\"query\": \"$QUERY\"}")
 
 # ---------------------------------------------------------------------
-# Save raw JSON locally
-DIR="cache"
-mkdir -p "$DIR"
-
-DATESTAMP=$(date +%Y%m%d)
-DAY_SUMMARY_FILE="$DIR/bird_summary_${DATESTAMP}.json"
-
+# Save and upload the daily summary file (overwrites same date)
 echo "$DATA" > "$DAY_SUMMARY_FILE"
 
-# Upload (will overwrite same file until date changes)
 curl -s -X POST https://content.dropboxapi.com/2/files/upload \
   --header "Authorization: Bearer $ACCESS_TOKEN" \
   --header "Dropbox-API-Arg: {\"path\": \"/WeatherCam/bird_summary_${DATESTAMP}.json\", \"mode\": \"overwrite\"}" \
@@ -47,9 +48,10 @@ echo "✅ Uploaded raw detections (${TIMESTAMP})"
 # Insert detections into Supabase (deduplicated)
 if [ -n "$PG_CONN" ]; then
   echo "Inserting BirdWeather detections into Supabase..."
-  JSON=$(cat "$OUT_FILE")
+  JSON="$DATA"
 
-echo "$JSON" | psql "$PG_CONN" -v ON_ERROR_STOP=1 -v jsondata="$JSON" <<'SQL'WITH dets AS (
+  echo "$JSON" | psql "$PG_CONN" -v ON_ERROR_STOP=1 -v jsondata="$JSON" <<'SQL'
+WITH dets AS (
   SELECT jsonb_array_elements(:'jsondata'::jsonb #> '{data,station,detections,edges}') AS edge
 )
 INSERT INTO bird_detections (detection_id, ts, payload)
@@ -63,7 +65,7 @@ SQL
 
   echo "✅ Inserted new detections into Supabase (skipped existing)"
 else
-  echo "⚠️ PG_CONN not set — skipping database insert."
+  echo "⚠️  PG_CONN not set — skipping database insert."
 fi
 
 # ---------------------------------------------------------------------
