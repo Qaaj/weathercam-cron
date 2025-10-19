@@ -1,40 +1,47 @@
 #!/bin/bash
 set -e
 
-# 👇 Replace this with your camera's public snapshot URL
-URL="https://images.ambientweather.net/F8B3B780F0A5/latest.jpg"
+# Camera and AmbientWeather API endpoints
+CAM_URL="$CAM_URL"
+DATA_URL="https://rt.ambientweather.net/v1/devices?applicationKey=$AMBIENT_APP_KEY&apiKey=$AMBIENT_API_KEY"
 
-# Working directory for temporary files
 DIR="cache"
 mkdir -p "$DIR"
-TMP="$DIR/latest.jpg"
-OUT="$DIR/$(date +%Y%m%d_%H%M%S).jpg"
+TIMESTAMP=$(date +%Y%m%d_%H%M%S)
+IMG_FILE="$DIR/${TIMESTAMP}.jpg"
+JSON_FILE="$DIR/${TIMESTAMP}.json"
 
-# Dropbox app credentials (injected via GitHub Secrets)
+# Dropbox app credentials (from secrets)
 APP_KEY="$DROPBOX_APP_KEY"
 APP_SECRET="$DROPBOX_APP_SECRET"
 REFRESH_TOKEN="$DROPBOX_REFRESH_TOKEN"
 
-# Get a short-lived access token from Dropbox
+# Get a short-lived Dropbox access token
 ACCESS_TOKEN=$(curl -s -u "$APP_KEY:$APP_SECRET" \
   -d "grant_type=refresh_token&refresh_token=$REFRESH_TOKEN" \
   https://api.dropboxapi.com/oauth2/token | jq -r .access_token)
 
-# Download the latest camera image
-curl -s -o "$TMP.new" "$URL"
+# Download camera image and AmbientWeather JSON
+curl -s -o "$IMG_FILE" "$CAM_URL"
+curl -s -o "$JSON_FILE" "$DATA_URL"
 
-# Compare new vs. last image
-if [ ! -f "$TMP" ] || ! cmp -s "$TMP.new" "$TMP"; then
-  mv "$TMP.new" "$OUT"
-  cp "$OUT" "$TMP"
-  DROPBOX_PATH="/WeatherCam/$(basename "$OUT")"
-  curl -s -X POST https://content.dropboxapi.com/2/files/upload \
-    --header "Authorization: Bearer $ACCESS_TOKEN" \
-    --header "Dropbox-API-Arg: {\"path\": \"$DROPBOX_PATH\", \"mode\": \"add\", \"autorename\": true}" \
-    --header "Content-Type: application/octet-stream" \
-    --data-binary @"$OUT"
-  echo "Uploaded $(basename "$OUT")"
-else
-  rm "$TMP.new"
-  echo "No change"
-fi
+# Upload image
+DROPBOX_PATH_IMG="/WeatherCam/${TIMESTAMP}.jpg"
+curl -s -X POST https://content.dropboxapi.com/2/files/upload \
+  --header "Authorization: Bearer $ACCESS_TOKEN" \
+  --header "Dropbox-API-Arg: {\"path\": \"$DROPBOX_PATH_IMG\", \"mode\": \"add\", \"autorename\": true}" \
+  --header "Content-Type: application/octet-stream" \
+  --data-binary @"$IMG_FILE"
+
+# Upload JSON
+DROPBOX_PATH_JSON="/WeatherCam/data/${TIMESTAMP}.json"
+curl -s -X POST https://content.dropboxapi.com/2/files/upload \
+  --header "Authorization: Bearer $ACCESS_TOKEN" \
+  --header "Dropbox-API-Arg: {\"path\": \"$DROPBOX_PATH_JSON\", \"mode\": \"add\", \"autorename\": true}" \
+  --header "Content-Type: application/octet-stream" \
+  --data-binary @"$JSON_FILE"
+
+# Optional cleanup
+rm -rf "$DIR"
+
+echo "Uploaded ${TIMESTAMP}.jpg and ${TIMESTAMP}.json"
