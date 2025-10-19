@@ -2,14 +2,16 @@
 set -e
 export TZ="America/Halifax"
 
-# Skip if nighttime (6 AM – 8 PM Halifax)
+# ---------------------------------------------------------------------
+# Skip nighttime (6 AM – 8 PM Halifax time)
 hour=$(date +%H)
 if [ "$hour" -lt 6 ] || [ "$hour" -ge 20 ]; then
   echo "Nighttime in Nova Scotia ($hour h) – skipping run."
   exit 0
 fi
 
-# Secrets from GitHub
+# ---------------------------------------------------------------------
+# Environment variables from GitHub Secrets
 CAM_URL="$CAM_URL"
 AMBIENT_APP_KEY="$AMBIENT_APP_KEY"
 AMBIENT_API_KEY="$AMBIENT_API_KEY"
@@ -26,70 +28,86 @@ IMG_FILE="$DIR/${TIMESTAMP}.jpg"
 JSON_FILE="$DIR/${TIMESTAMP}.json"
 LATEST_IMG="$DIR/latest.jpg"
 
-# Dropbox short-lived token
+# ---------------------------------------------------------------------
+# Get Dropbox access token
 ACCESS_TOKEN=$(curl -s -u "$APP_KEY:$APP_SECRET" \
   -d "grant_type=refresh_token&refresh_token=$REFRESH_TOKEN" \
   https://api.dropboxapi.com/oauth2/token | jq -r .access_token)
 
-# Download new image + JSON
+# ---------------------------------------------------------------------
+# Download the latest camera image and weather data
 curl -s -o "$IMG_FILE" "$CAM_URL"
 curl -s -o "$JSON_FILE" "$DATA_URL"
 
-# Try to fetch previous latest.jpg
-curl -s -X POST https://content.dropboxapi.com/2/files/download \
+# ---------------------------------------------------------------------
+# Attempt to download the previous latest.jpg from Dropbox
+echo "Fetching latest.jpg from Dropbox..."
+if ! curl -L --fail -s -X POST https://content.dropboxapi.com/2/files/download \
   --header "Authorization: Bearer $ACCESS_TOKEN" \
   --header 'Dropbox-API-Arg: {"path": "/WeatherCam/latest.jpg"}' \
-  -o "$LATEST_IMG" || true
+  -o "$LATEST_IMG"; then
+  echo "⚠️  No valid latest.jpg found (first run or fetch failed)."
+fi
 
-# --- Visual comparison using ImageMagick thumbnail hashing ---
+# ---------------------------------------------------------------------
+# Visual comparison using ImageMagick thumbnail hashing
 SHOULD_UPLOAD=1
 if [ -f "$LATEST_IMG" ]; then
-  convert "$IMG_FILE"    -resize 64x64 -colorspace Gray "$DIR/new_small.jpg"
-  convert "$LATEST_IMG"  -resize 64x64 -colorspace Gray "$DIR/old_small.jpg"
-  HASH_NEW=$(sha256sum "$DIR/new_small.jpg" | cut -d' ' -f1)
-  HASH_OLD=$(sha256sum "$DIR/old_small.jpg" | cut -d' ' -f1)
-  echo "Thumbnail hashes:"
-  echo "New : $HASH_NEW"
-  echo "Prev: $HASH_OLD"
-  if [ "$HASH_NEW" = "$HASH_OLD" ]; then
-    echo "Visually identical – skipping upload."
-    SHOULD_UPLOAD=0
+  # Confirm file is a real JPEG (starts with 0xFF 0xD8)
+  if head -c 2 "$LATEST_IMG" | grep -q $'\xFF\xD8'; then
+    echo "Comparing thumbnails..."
+    convert "$IMG_FILE"   -resize 64x64 -colorspace Gray "$DIR/new_small.jpg"
+    convert "$LATEST_IMG" -resize 64x64 -colorspace Gray "$DIR/old_small.jpg"
+    HASH_NEW=$(sha256sum "$DIR/new_small.jpg" | cut -d' ' -f1)
+    HASH_OLD=$(sha256sum "$DIR/old_small.jpg" | cut -d' ' -f1)
+    echo "Thumbnail hashes:"
+    echo "New : $HASH_NEW"
+    echo "Prev: $HASH_OLD"
+    if [ "$HASH_NEW" = "$HASH_OLD" ]; then
+      echo "Visually identical – skipping upload."
+      SHOULD_UPLOAD=0
+    fi
+  else
+    echo "⚠️  latest.jpg exists but isn't a valid JPEG (likely API error). Will refresh."
   fi
 fi
-# -------------------------------------------------------------
 
-if [ "$SHOULD_UPLOAD" -eq 0 ]; then
-  rm -rf "$DIR"
-  exit 0
+# ---------------------------------------------------------------------
+# Upload new data if the image differs
+if [ "$SHOULD_UPLOAD" -eq 1 ]; then
+  echo "Uploading new image and JSON..."
+
+  # Upload timestamped image
+  curl -s -X POST https://content.dropboxapi.com/2/files/upload \
+    --header "Authorization: Bearer $ACCESS_TOKEN" \
+    --header "Dropbox-API-Arg: {\"path\": \"/WeatherCam/${TIMESTAMP}.jpg\", \"mode\": \"add\", \"autorename\": true}" \
+    --header "Content-Type: application/octet-stream" \
+    --data-binary @"$IMG_FILE"
+
+  # Upload timestamped JSON
+  curl -s -X POST https://content.dropboxapi.com/2/files/upload \
+    --header "Authorization: Bearer $ACCESS_TOKEN" \
+    --header "Dropbox-API-Arg: {\"path\": \"/WeatherCam/data/${TIMESTAMP}.json\", \"mode\": \"add\", \"autorename\": true}" \
+    --header "Content-Type: application/octet-stream" \
+    --data-binary @"$JSON_FILE"
+
+  # Overwrite latest versions
+  curl -s -X POST https://content.dropboxapi.com/2/files/upload \
+    --header "Authorization: Bearer $ACCESS_TOKEN" \
+    --header "Dropbox-API-Arg: {\"path\": \"/WeatherCam/latest.jpg\", \"mode\": \"overwrite\"}" \
+    --header "Content-Type: application/octet-stream" \
+    --data-binary @"$IMG_FILE"
+
+  curl -s -X POST https://content.dropboxapi.com/2/files/upload \
+    --header "Authorization: Bearer $ACCESS_TOKEN" \
+    --header "Dropbox-API-Arg: {\"path\": \"/WeatherCam/data/latest.json\", \"mode\": \"overwrite\"}" \
+    --header "Content-Type: application/octet-stream" \
+    --data-binary @"$JSON_FILE"
+
+  echo "✅ Uploaded ${TIMESTAMP}.jpg and ${TIMESTAMP}.json"
 fi
 
-echo "Uploading new image and JSON..."
-
-# Upload timestamped image + JSON
-curl -s -X POST https://content.dropboxapi.com/2/files/upload \
-  --header "Authorization: Bearer $ACCESS_TOKEN" \
-  --header "Dropbox-API-Arg: {\"path\": \"/WeatherCam/${TIMESTAMP}.jpg\", \"mode\": \"add\", \"autorename\": true}" \
-  --header "Content-Type: application/octet-stream" \
-  --data-binary @"$IMG_FILE"
-
-curl -s -X POST https://content.dropboxapi.com/2/files/upload \
-  --header "Authorization: Bearer $ACCESS_TOKEN" \
-  --header "Dropbox-API-Arg: {\"path\": \"/WeatherCam/data/${TIMESTAMP}.json\", \"mode\": \"add\", \"autorename\": true}" \
-  --header "Content-Type: application/octet-stream" \
-  --data-binary @"$JSON_FILE"
-
-# Update latest files (overwrite)
-curl -s -X POST https://content.dropboxapi.com/2/files/upload \
-  --header "Authorization: Bearer $ACCESS_TOKEN" \
-  --header "Dropbox-API-Arg: {\"path\": \"/WeatherCam/latest.jpg\", \"mode\": \"overwrite\"}" \
-  --header "Content-Type: application/octet-stream" \
-  --data-binary @"$IMG_FILE"
-
-curl -s -X POST https://content.dropboxapi.com/2/files/upload \
-  --header "Authorization: Bearer $ACCESS_TOKEN" \
-  --header "Dropbox-API-Arg: {\"path\": \"/WeatherCam/data/latest.json\", \"mode\": \"overwrite\"}" \
-  --header "Content-Type: application/octet-stream" \
-  --data-binary @"$JSON_FILE"
-
+# ---------------------------------------------------------------------
+# Cleanup
 rm -rf "$DIR"
-echo "Uploaded ${TIMESTAMP}.jpg and ${TIMESTAMP}.json (NS local time)"
+echo "Done (Nova Scotia local time)"
