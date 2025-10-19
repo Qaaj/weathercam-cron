@@ -21,3 +21,5 @@ jobs:
           CAM_URL: ${{ secrets.CAM_URL }}
           AMBIENT_APP_KEY: ${{ secrets.AMBIENT_APP_KEY }}
           AMBIENT_API_KEY: ${{ secrets.AMBIENT_API_KEY }}
+          PG_CONN: ${{ secrets.PG_CONN }}
+
