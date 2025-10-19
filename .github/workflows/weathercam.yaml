@@ -18,3 +18,6 @@ jobs:
           DROPBOX_APP_KEY: ${{ secrets.DROPBOX_APP_KEY }}
           DROPBOX_APP_SECRET: ${{ secrets.DROPBOX_APP_SECRET }}
           DROPBOX_REFRESH_TOKEN: ${{ secrets.DROPBOX_REFRESH_TOKEN }}
+          CAM_URL: ${{ secrets.CAM_URL }}
+          AMBIENT_APP_KEY: ${{ secrets.AMBIENT_APP_KEY }}
+          AMBIENT_API_KEY: ${{ secrets.AMBIENT_API_KEY }}
