@@ -132,6 +132,27 @@ if [ "$SHOULD_UPLOAD" -eq 1 ]; then
 fi
 
 # ---------------------------------------------------------------------
+# Insert into Supabase (Postgres)
+if [ -n "$PG_CONN" ]; then
+  echo "Inserting weather data into Supabase..."
+  JSON=$(cat "$JSON_FILE")
+
+  psql "$PG_CONN" <<'SQL'
+  WITH rec AS (
+    SELECT jsonb_array_elements(:'JSON'::jsonb)->'lastData' AS ld
+  )
+  INSERT INTO weather_lastdata (ts, payload)
+  SELECT
+    to_timestamp((ld->>'dateutc')::bigint / 1000),
+    ld
+  FROM rec
+  ON CONFLICT (ts) DO NOTHING;
+SQL
+else
+  echo "⚠️  PG_CONN not set — skipping database insert."
+fi
+
+# ---------------------------------------------------------------------
 # Cleanup
 rm -rf "$DIR"
 echo "Done (Nova Scotia local time)"
