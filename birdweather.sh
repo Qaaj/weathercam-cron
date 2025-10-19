@@ -3,57 +3,77 @@ set -e
 export TZ="America/Halifax"
 
 # ---------------------------------------------------------------------
-# Dropbox credentials
+# Secrets
 APP_KEY="$DROPBOX_APP_KEY"
 APP_SECRET="$DROPBOX_APP_SECRET"
 REFRESH_TOKEN="$DROPBOX_REFRESH_TOKEN"
-
-# BirdWeather station ID (passed as a secret)
-STATION_ID="$BIRDWEATHER_ID"
+PG_CONN="$PG_CONN"
+BIRDWEATHER_ID="$BIRDWEATHER_ID"
 
 # ---------------------------------------------------------------------
-# Get Dropbox access token
+# Get Dropbox token
 ACCESS_TOKEN=$(curl -s -u "$APP_KEY:$APP_SECRET" \
   -d "grant_type=refresh_token&refresh_token=$REFRESH_TOKEN" \
   https://api.dropboxapi.com/oauth2/token | jq -r .access_token)
 
 # ---------------------------------------------------------------------
-# GraphQL query (station ID interpolated)
-QUERY="{ station(id: ${STATION_ID}) { id name timeOfDayDetectionCounts { count speciesId species { id commonName scientificName } } } }"
-
-# ---------------------------------------------------------------------
-# Run query and save raw JSON
-DIR="cache"
-mkdir -p "$DIR"
-TIMESTAMP=$(date +%Y%m%d_%H%M%S)
-OUT_FILE="$DIR/birdweather_${TIMESTAMP}.json"
-
-echo "Fetching BirdWeather data for station ID ${STATION_ID}..."
-HTTP_CODE=$(curl -s -w "%{http_code}" -o "$OUT_FILE" \
-  -X POST https://app.birdweather.com/graphql \
+# Fetch BirdWeather detections (500 latest)
+QUERY="{ station(id: ${BIRDWEATHER_ID}) { detections(last: 500) { edges { node { id confidence timestamp species { id commonName scientificName } } } } } }"
+echo "Fetching BirdWeather detections for station ${BIRDWEATHER_ID}..."
+DATA=$(curl -s -X POST https://app.birdweather.com/graphql \
   -H "Content-Type: application/json" \
   -d "{\"query\": \"$QUERY\"}")
 
-if [ "$HTTP_CODE" != "200" ]; then
-  echo "⚠️  BirdWeather API returned HTTP $HTTP_CODE"
+# ---------------------------------------------------------------------
+# Save raw JSON locally
+DIR="cache"
+mkdir -p "$DIR"
+TIMESTAMP=$(date +%Y%m%d_%H%M%S)
+OUT_FILE="$DIR/bird_detections_${TIMESTAMP}.json"
+echo "$DATA" > "$OUT_FILE"
+
+# ---------------------------------------------------------------------
+# Upload raw GraphQL JSON to Dropbox (timestamped + latest)
+echo "Uploading raw detections to Dropbox..."
+curl -s -X POST https://content.dropboxapi.com/2/files/upload \
+  --header "Authorization: Bearer $ACCESS_TOKEN" \
+  --header "Dropbox-API-Arg: {\"path\": \"/WeatherCam/bird_detections_${TIMESTAMP}.json\", \"mode\": \"add\", \"autorename\": true}" \
+  --header "Content-Type: application/octet-stream" \
+  --data-binary @"$OUT_FILE"
+
+curl -s -X POST https://content.dropboxapi.com/2/files/upload \
+  --header "Authorization: Bearer $ACCESS_TOKEN" \
+  --header "Dropbox-API-Arg: {\"path\": \"/WeatherCam/bird_detections_latest.json\", \"mode\": \"overwrite\"}" \
+  --header "Content-Type: application/octet-stream" \
+  --data-binary @"$OUT_FILE"
+
+echo "✅ Uploaded raw detections (${TIMESTAMP})"
+
+# ---------------------------------------------------------------------
+# Insert detections into Supabase (deduplicated)
+if [ -n "$PG_CONN" ]; then
+  echo "Inserting BirdWeather detections into Supabase..."
+  JSON=$(cat "$OUT_FILE")
+
+  echo "$JSON" | psql "$PG_CONN" -v ON_ERROR_STOP=1 -v jsondata="$(cat)" <<'SQL'
+WITH dets AS (
+  SELECT jsonb_array_elements(:'jsondata'::jsonb #> '{data,station,detections,edges}') AS edge
+)
+INSERT INTO bird_detections (detection_id, ts, payload)
+SELECT
+  edge->'node'->>'id' AS detection_id,
+  (edge->'node'->>'timestamp')::timestamptz AS ts,
+  edge->'node' AS payload
+FROM dets
+ON CONFLICT (detection_id) DO NOTHING;
+SQL
+
+  echo "✅ Inserted new detections into Supabase (skipped existing)"
 else
-  echo "✅ GraphQL query successful, response saved to $OUT_FILE"
+  echo "⚠️ PG_CONN not set — skipping database insert."
 fi
 
 # ---------------------------------------------------------------------
-# Upload to Dropbox (timestamped + latest)
-echo "Uploading to Dropbox..."
-curl -s -X POST https://content.dropboxapi.com/2/files/upload \
-  --header "Authorization: Bearer $ACCESS_TOKEN" \
-  --header "Dropbox-API-Arg: {\"path\": \"/BirdWeather/birdweather_${TIMESTAMP}.json\", \"mode\": \"add\", \"autorename\": true}" \
-  --header "Content-Type: application/octet-stream" \
-  --data-binary @"$OUT_FILE"
-
-curl -s -X POST https://content.dropboxapi.com/2/files/upload \
-  --header "Authorization: Bearer $ACCESS_TOKEN" \
-  --header "Dropbox-API-Arg: {\"path\": \"/BirdWeather/birdweather_latest.json\", \"mode\": \"overwrite\"}" \
-  --header "Content-Type: application/octet-stream" \
-  --data-binary @"$OUT_FILE"
-
-echo "✅ Uploaded raw BirdWeather GraphQL output (${TIMESTAMP})"
+# Cleanup
 rm -rf "$DIR"
+echo "Done (Nova Scotia local time)"
