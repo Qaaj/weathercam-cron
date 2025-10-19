@@ -1,0 +1,20 @@
+name: BirdWeather uploader
+on:
+  schedule:
+    - cron: "30 8,16 * * *"   # 8 AM and 4 PM Atlantic Time
+  workflow_dispatch:
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install deps
+        run: sudo apt-get update && sudo apt-get install -y jq curl
+      - name: Run BirdWeather sync
+        run: bash birdweather.sh
+        env:
+          DROPBOX_APP_KEY: ${{ secrets.DROPBOX_APP_KEY }}
+          DROPBOX_APP_SECRET: ${{ secrets.DROPBOX_APP_SECRET }}
+          DROPBOX_REFRESH_TOKEN: ${{ secrets.DROPBOX_REFRESH_TOKEN }}
+          BIRDWEATHER_URL: ${{ secrets.BIRDWEATHER_URL }}       # your NUC’s endpoint
