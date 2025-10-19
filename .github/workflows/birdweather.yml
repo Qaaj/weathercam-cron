@@ -19,3 +19,4 @@ jobs:
           DROPBOX_APP_SECRET: ${{ secrets.DROPBOX_APP_SECRET }}
           DROPBOX_REFRESH_TOKEN: ${{ secrets.DROPBOX_REFRESH_TOKEN }}
           BIRDWEATHER_ID: ${{ secrets.BIRDWEATHER_ID }}       # your NUC’s endpoint
+          PG_CONN: ${{ secrets.PG_CONN }}
