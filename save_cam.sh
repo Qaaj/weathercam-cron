@@ -1,12 +1,39 @@
 #!/bin/bash
 set -e
 export TZ="America/Halifax"
+# ---------------------------------------------------------------------
+# Location: Antigonish, Nova Scotia
+LAT="45.6217"
+LON="-61.9981"
 
 # ---------------------------------------------------------------------
-# Skip nighttime (6 AM–8 PM Halifax)
+# Default fallback times (6 AM – 8 PM Halifax)
+SUNRISE_FALLBACK=6
+SUNSET_FALLBACK=20
+
+# ---------------------------------------------------------------------
+# Try to fetch real sunrise/sunset times (in UTC, converted later)
+echo "Fetching sunrise/sunset for Antigonish..."
+API_URL="https://api.sunrise-sunset.org/json?lat=${LAT}&lng=${LON}&formatted=0"
+
+if RESPONSE=$(curl -s --max-time 10 "$API_URL") && echo "$RESPONSE" | grep -q '"status":"OK"'; then
+  SUNRISE_UTC=$(echo "$RESPONSE" | jq -r '.results.sunrise')
+  SUNSET_UTC=$(echo "$RESPONSE" | jq -r '.results.sunset')
+  # Convert to local hour (integer 0–23)
+  SUNRISE_HOUR=$(date -d "$SUNRISE_UTC" +%H 2>/dev/null || echo "$SUNRISE_FALLBACK")
+  SUNSET_HOUR=$(date -d "$SUNSET_UTC" +%H 2>/dev/null || echo "$SUNSET_FALLBACK")
+  echo "Sunrise (local): ${SUNRISE_HOUR}h, Sunset (local): ${SUNSET_HOUR}h"
+else
+  echo "⚠️  Could not fetch sunrise/sunset — using fallback (${SUNRISE_FALLBACK}–${SUNSET_FALLBACK})."
+  SUNRISE_HOUR=$SUNRISE_FALLBACK
+  SUNSET_HOUR=$SUNSET_FALLBACK
+fi
+
+# ---------------------------------------------------------------------
+# Skip nighttime runs
 hour=$(date +%H)
-if [ "$hour" -lt 6 ] || [ "$hour" -ge 20 ]; then
-  echo "Nighttime in Nova Scotia ($hour h) – skipping run."
+if [ "$hour" -lt "$SUNRISE_HOUR" ] || [ "$hour" -ge "$SUNSET_HOUR" ]; then
+  echo "Nighttime in Antigonish ($hour h) – skipping run."
   exit 0
 fi
 
