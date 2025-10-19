@@ -58,9 +58,9 @@ if [ -n "$PG_CONN" ]; then
   echo "Inserting weather data into Supabase..."
   JSON=$(cat "$JSON_FILE")
 
- psql "$PG_CONN" <<SQL
+ echo "$JSON" | psql "$PG_CONN" -v ON_ERROR_STOP=1 -v jsondata="$(cat)" <<'SQL'
 WITH rec AS (
-  SELECT jsonb_array_elements('${JSON}'::jsonb)->'lastData' AS ld
+  SELECT jsonb_array_elements(:'jsondata'::jsonb)->'lastData' AS ld
 )
 INSERT INTO weather_lastdata (ts, payload)
 SELECT
