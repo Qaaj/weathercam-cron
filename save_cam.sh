@@ -3,7 +3,7 @@ set -e
 export TZ="America/Halifax"
 
 # ---------------------------------------------------------------------
-# Skip nighttime (6 AM – 8 PM Halifax time)
+# Skip nighttime (6 AM–8 PM Halifax)
 hour=$(date +%H)
 if [ "$hour" -lt 6 ] || [ "$hour" -ge 20 ]; then
   echo "Nighttime in Nova Scotia ($hour h) – skipping run."
@@ -29,7 +29,7 @@ JSON_FILE="$DIR/${TIMESTAMP}.json"
 LATEST_IMG="$DIR/latest.jpg"
 
 # ---------------------------------------------------------------------
-# Get Dropbox access token
+# Dropbox access token
 ACCESS_TOKEN=$(curl -s -u "$APP_KEY:$APP_SECRET" \
   -d "grant_type=refresh_token&refresh_token=$REFRESH_TOKEN" \
   https://api.dropboxapi.com/oauth2/token | jq -r .access_token)
@@ -42,7 +42,6 @@ curl -s -o "$JSON_FILE" "$DATA_URL"
 # ---------------------------------------------------------------------
 # Attempt to download the previous latest.jpg from Dropbox
 echo "Fetching latest.jpg from Dropbox..."
-# Save HTTP code and response body for debugging
 HTTP_CODE=$(curl -L -s -w "%{http_code}" -o "$LATEST_IMG" \
   -X POST https://content.dropboxapi.com/2/files/download \
   --header "Authorization: Bearer $ACCESS_TOKEN" \
@@ -50,34 +49,23 @@ HTTP_CODE=$(curl -L -s -w "%{http_code}" -o "$LATEST_IMG" \
 
 if [ "$HTTP_CODE" != "200" ]; then
   echo "⚠️  Dropbox download failed (HTTP $HTTP_CODE)"
-  echo "---- Response ----"
   cat "$LATEST_IMG" || true
-  echo "------------------"
   rm -f "$LATEST_IMG"
 else
   echo "✅ latest.jpg downloaded successfully ($(stat -c%s "$LATEST_IMG") bytes)"
 fi
 
 # ---------------------------------------------------------------------
-# Visual comparison using ImageMagick thumbnail hashing
+# Compare via SHA-256 hash (exact byte match)
 SHOULD_UPLOAD=1
 if [ -f "$LATEST_IMG" ]; then
-  # Confirm file is a real JPEG (starts with 0xFF 0xD8)
-  if head -c 2 "$LATEST_IMG" | grep -q $'\xFF\xD8'; then
-    echo "Comparing thumbnails..."
-    convert "$IMG_FILE"   -resize 64x64 -colorspace Gray "$DIR/new_small.jpg"
-    convert "$LATEST_IMG" -resize 64x64 -colorspace Gray "$DIR/old_small.jpg"
-    HASH_NEW=$(sha256sum "$DIR/new_small.jpg" | cut -d' ' -f1)
-    HASH_OLD=$(sha256sum "$DIR/old_small.jpg" | cut -d' ' -f1)
-    echo "Thumbnail hashes:"
-    echo "New : $HASH_NEW"
-    echo "Prev: $HASH_OLD"
-    if [ "$HASH_NEW" = "$HASH_OLD" ]; then
-      echo "Visually identical – skipping upload."
-      SHOULD_UPLOAD=0
-    fi
-  else
-    echo "⚠️  latest.jpg exists but isn't a valid JPEG (likely API error). Will refresh."
+  HASH_NEW=$(sha256sum "$IMG_FILE" | cut -d' ' -f1)
+  HASH_OLD=$(sha256sum "$LATEST_IMG" | cut -d' ' -f1)
+  echo "New image hash : $HASH_NEW"
+  echo "Prev image hash: $HASH_OLD"
+  if [ "$HASH_NEW" = "$HASH_OLD" ]; then
+    echo "Image identical – skipping upload."
+    SHOULD_UPLOAD=0
   fi
 fi
 
