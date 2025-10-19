@@ -11,7 +11,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Install deps
-        run: sudo apt-get update && sudo apt-get install -y jq curl && sudo apt-get install -y jq curl imagemagick
+        run: sudo apt-get update && sudo apt-get install -y jq curl
       - name: Run script
         run: bash save_cam.sh
         env:
