@@ -1,5 +1,16 @@
 #!/bin/bash
 set -e
+export TZ="America/Halifax"
+
+
+# Get local hour (00–23)
+hour=$(date +%H)
+
+# Skip if before 6 AM or after 8 PM
+if [ "$hour" -lt 6 ] || [ "$hour" -ge 20 ]; then
+  echo "Nighttime in Nova Scotia ($hour h) – skipping run."
+  exit 0
+fi
 
 # Camera and AmbientWeather API endpoints
 CAM_URL="$CAM_URL"
