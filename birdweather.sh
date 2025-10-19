@@ -22,35 +22,43 @@ DIR="cache"
 mkdir -p "$DIR"
 DATESTAMP=$(date +%Y%m%d)
 TIMESTAMP=$(date +%Y%m%d_%H%M%S)
-DAY_SUMMARY_FILE="$DIR/bird_summary_${DATESTAMP}.json"
+SUMMARY_FILE="$DIR/bird_summary_${DATESTAMP}.json"
 
 # ---------------------------------------------------------------------
-# Fetch BirdWeather detections (last 100)
-QUERY="{ station(id: ${BIRDWEATHER_ID}) { detections(last: 100) { edges { node { id confidence timestamp species { id commonName scientificName } } } } } }"
+# 1️⃣ Fetch BirdWeather detections (last 100)
+DETECTIONS_QUERY="{ station(id: ${BIRDWEATHER_ID}) { detections(last: 100) { edges { node { id confidence timestamp species { id commonName scientificName } } } } } }"
 echo "Fetching BirdWeather detections for station ${BIRDWEATHER_ID}..."
-DATA=$(curl -s -X POST https://app.birdweather.com/graphql \
+DETECTIONS_DATA=$(curl -s -X POST https://app.birdweather.com/graphql \
   -H "Content-Type: application/json" \
-  -d "{\"query\": \"$QUERY\"}")
+  -d "{\"query\": \"$DETECTIONS_QUERY\"}")
+
+# ---------------------------------------------------------------------
+# 2️⃣ Fetch BirdWeather summary (timeOfDayDetectionCounts)
+SUMMARY_QUERY="{ station(id: ${BIRDWEATHER_ID}) { id name timeOfDayDetectionCounts { count speciesId species { id commonName scientificName } } } }"
+echo "Fetching BirdWeather daily summary..."
+SUMMARY_DATA=$(curl -s -X POST https://app.birdweather.com/graphql \
+  -H "Content-Type: application/json" \
+  -d "{\"query\": \"$SUMMARY_QUERY\"}")
 
 # ---------------------------------------------------------------------
 # Save and upload the daily summary file (overwrites same date)
-echo "$DATA" > "$DAY_SUMMARY_FILE"
+echo "$SUMMARY_DATA" > "$SUMMARY_FILE"
 
 curl -s -X POST https://content.dropboxapi.com/2/files/upload \
   --header "Authorization: Bearer $ACCESS_TOKEN" \
-  --header "Dropbox-API-Arg: {\"path\": \"/BirdWeather/bird_summary_${DATESTAMP}.json\", \"mode\": \"overwrite\"}" \
+  --header "Dropbox-API-Arg: {\"path\": \"/WeatherCam/bird_summary_${DATESTAMP}.json\", \"mode\": \"overwrite\"}" \
   --header "Content-Type: application/octet-stream" \
-  --data-binary @"$DAY_SUMMARY_FILE"
+  --data-binary @"$SUMMARY_FILE"
 
-echo "✅ Uploaded raw detections (${TIMESTAMP})"
+echo "✅ Uploaded daily summary (${DATESTAMP})"
 
 # ---------------------------------------------------------------------
 # Insert detections into Supabase (deduplicated)
 if [ -n "$PG_CONN" ]; then
   echo "Inserting BirdWeather detections into Supabase..."
-  JSON="$DATA"
+  JSON="$DETECTIONS_DATA"
 
-  echo "$JSON" | psql "$PG_CONN" -v ON_ERROR_STOP=1 -v jsondata="$JSON" <<'SQL'
+  printf '%s' "$JSON" | psql "$PG_CONN" -v ON_ERROR_STOP=1 -v jsondata="$JSON" <<'SQL'
 WITH dets AS (
   SELECT jsonb_array_elements(:'jsondata'::jsonb #> '{data,station,detections,edges}') AS edge
 )
