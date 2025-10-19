@@ -46,7 +46,7 @@ echo "$SUMMARY_DATA" > "$SUMMARY_FILE"
 
 curl -s -X POST https://content.dropboxapi.com/2/files/upload \
   --header "Authorization: Bearer $ACCESS_TOKEN" \
-  --header "Dropbox-API-Arg: {\"path\": \"/WeatherCam/bird_summary_${DATESTAMP}.json\", \"mode\": \"overwrite\"}" \
+  --header "Dropbox-API-Arg: {\"path\": \"/BirdWeather/bird_summary_${DATESTAMP}.json\", \"mode\": \"overwrite\"}" \
   --header "Content-Type: application/octet-stream" \
   --data-binary @"$SUMMARY_FILE"
 
