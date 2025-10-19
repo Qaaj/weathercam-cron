@@ -49,8 +49,7 @@ if [ -n "$PG_CONN" ]; then
   echo "Inserting BirdWeather detections into Supabase..."
   JSON=$(cat "$OUT_FILE")
 
-  echo "$JSON" | psql "$PG_CONN" -v ON_ERROR_STOP=1 -v jsondata="$(cat)" <<'SQL'
-WITH dets AS (
+echo "$JSON" | psql "$PG_CONN" -v ON_ERROR_STOP=1 -v jsondata="$JSON" <<'SQL'WITH dets AS (
   SELECT jsonb_array_elements(:'jsondata'::jsonb #> '{data,station,detections,edges}') AS edge
 )
 INSERT INTO bird_detections (detection_id, ts, payload)
