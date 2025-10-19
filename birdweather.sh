@@ -45,13 +45,13 @@ fi
 echo "Uploading to Dropbox..."
 curl -s -X POST https://content.dropboxapi.com/2/files/upload \
   --header "Authorization: Bearer $ACCESS_TOKEN" \
-  --header "Dropbox-API-Arg: {\"path\": \"/WeatherCam/birdweather_${TIMESTAMP}.json\", \"mode\": \"add\", \"autorename\": true}" \
+  --header "Dropbox-API-Arg: {\"path\": \"/BirdWeather/birdweather_${TIMESTAMP}.json\", \"mode\": \"add\", \"autorename\": true}" \
   --header "Content-Type: application/octet-stream" \
   --data-binary @"$OUT_FILE"
 
 curl -s -X POST https://content.dropboxapi.com/2/files/upload \
   --header "Authorization: Bearer $ACCESS_TOKEN" \
-  --header "Dropbox-API-Arg: {\"path\": \"/WeatherCam/birdweather_latest.json\", \"mode\": \"overwrite\"}" \
+  --header "Dropbox-API-Arg: {\"path\": \"/BirdWeather/birdweather_latest.json\", \"mode\": \"overwrite\"}" \
   --header "Content-Type: application/octet-stream" \
   --data-binary @"$OUT_FILE"
 
