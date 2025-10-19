@@ -10,9 +10,6 @@ REFRESH_TOKEN="$DROPBOX_REFRESH_TOKEN"
 PG_CONN="$PG_CONN"
 BIRDWEATHER_ID="$BIRDWEATHER_ID"
 
-DATESTAMP=$(date +%Y%m%d)
-DAY_SUMMARY_FILE="$DIR/bird_summary_${DATESTAMP}.json"
-
 # ---------------------------------------------------------------------
 # Get Dropbox token
 ACCESS_TOKEN=$(curl -s -u "$APP_KEY:$APP_SECRET" \
@@ -31,8 +28,10 @@ DATA=$(curl -s -X POST https://app.birdweather.com/graphql \
 # Save raw JSON locally
 DIR="cache"
 mkdir -p "$DIR"
-TIMESTAMP=$(date +%Y%m%d_%H%M%S)
-OUT_FILE="$DIR/bird_detections_${TIMESTAMP}.json"
+
+DATESTAMP=$(date +%Y%m%d)
+DAY_SUMMARY_FILE="$DIR/bird_summary_${DATESTAMP}.json"
+
 echo "$DATA" > "$DAY_SUMMARY_FILE"
 
 # Upload (will overwrite same file until date changes)
