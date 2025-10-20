@@ -52,44 +52,30 @@ curl -s -X POST https://content.dropboxapi.com/2/files/upload \
 
 echo "✅ Uploaded daily summary (${DATESTAMP})"
 
-# Insert detections into Supabase (deduplicated)
 if [ -n "$PG_CONN" ]; then
   echo "Inserting BirdWeather detections into Supabase..."
 
-  psql "$PG_CONN" -v ON_ERROR_STOP=1 <<'SQL'
-BEGIN;
-CREATE TEMP TABLE tmp_json (doc jsonb);
-SQL
-
-  # Feed JSON to COPY, then terminate with '\.'
-  {
-    echo "COPY tmp_json (doc) FROM STDIN;"
-    printf '%s\n' "$DETECTIONS_DATA"
-    echo '\.'
-  } | psql "$PG_CONN" -v ON_ERROR_STOP=1 >/dev/null
-
-  psql "$PG_CONN" -v ON_ERROR_STOP=1 <<'SQL'
-WITH dets AS (
+  printf '%s' "$DETECTIONS_DATA" | psql "$PG_CONN" -v ON_ERROR_STOP=1 <<'SQL'
+WITH j AS (
+  SELECT convert_from(:'stdin'::bytea, 'utf8')::jsonb AS doc
+),
+edges AS (
   SELECT jsonb_array_elements(doc #> '{data,station,detections,edges}') AS edge
-  FROM tmp_json
+  FROM j
 )
 INSERT INTO bird_detections (detection_id, ts, payload)
 SELECT
   edge->'node'->>'id' AS detection_id,
   (edge->'node'->>'timestamp')::timestamptz AS ts,
   edge->'node' AS payload
-FROM dets
+FROM edges
 ON CONFLICT (detection_id) DO NOTHING;
-
-DROP TABLE tmp_json;
-COMMIT;
 SQL
 
   echo "✅ Inserted new detections into Supabase (skipped existing)"
 else
   echo "⚠️  PG_CONN not set — skipping database insert."
 fi
-
 # ---------------------------------------------------------------------
 # Cleanup
 rm -rf "$DIR"
