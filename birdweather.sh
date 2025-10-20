@@ -52,15 +52,16 @@ curl -s -X POST https://content.dropboxapi.com/2/files/upload \
 
 echo "✅ Uploaded daily summary (${DATESTAMP})"
 
-# ---------------------------------------------------------------------
 # Insert detections into Supabase (deduplicated)
 if [ -n "$PG_CONN" ]; then
   echo "Inserting BirdWeather detections into Supabase..."
-  JSON="$DETECTIONS_DATA"
 
-  printf '%s' "$JSON" | psql "$PG_CONN" -v ON_ERROR_STOP=1 -v jsondata="$JSON" <<'SQL'
-WITH dets AS (
-  SELECT jsonb_array_elements(:'jsondata'::jsonb #> '{data,station,detections,edges}') AS edge
+  printf '%s' "$DETECTIONS_DATA" | psql "$PG_CONN" -v ON_ERROR_STOP=1 <<'SQL'
+WITH src AS (
+  SELECT convert_from(pg_read_stdin()::bytea, 'utf8')::jsonb AS j
+)
+, dets AS (
+  SELECT jsonb_array_elements(j #> '{data,station,detections,edges}') AS edge FROM src
 )
 INSERT INTO bird_detections (detection_id, ts, payload)
 SELECT
