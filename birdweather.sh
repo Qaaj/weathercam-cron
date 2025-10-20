@@ -55,22 +55,29 @@ echo "✅ Uploaded daily summary (${DATESTAMP})"
 if [ -n "$PG_CONN" ]; then
   echo "Inserting BirdWeather detections into Supabase..."
 
-  printf '%s' "$DETECTIONS_DATA" | psql "$PG_CONN" -v ON_ERROR_STOP=1 <<'SQL'
-WITH j AS (
-  SELECT convert_from(:'stdin'::bytea, 'utf8')::jsonb AS doc
-),
-edges AS (
+  {
+    echo "BEGIN;"
+    echo "CREATE TEMP TABLE tmp_json (doc jsonb);"
+    echo "COPY tmp_json (doc) FROM STDIN;"
+    printf '%s\n' "$DETECTIONS_DATA"
+    echo '\.'
+    cat <<'SQL'
+WITH dets AS (
   SELECT jsonb_array_elements(doc #> '{data,station,detections,edges}') AS edge
-  FROM j
+  FROM tmp_json
 )
 INSERT INTO bird_detections (detection_id, ts, payload)
 SELECT
   edge->'node'->>'id' AS detection_id,
   (edge->'node'->>'timestamp')::timestamptz AS ts,
   edge->'node' AS payload
-FROM edges
+FROM dets
 ON CONFLICT (detection_id) DO NOTHING;
+
+DROP TABLE tmp_json;
+COMMIT;
 SQL
+  } | psql "$PG_CONN" -v ON_ERROR_STOP=1
 
   echo "✅ Inserted new detections into Supabase (skipped existing)"
 else
