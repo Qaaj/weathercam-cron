@@ -8,7 +8,7 @@ APP_SECRET="$DROPBOX_APP_SECRET"
 REFRESH_TOKEN="$DROPBOX_REFRESH_TOKEN"
 
 # ---- Compute the target month = previous month (local time) ----
-TARGET_MONTH=$(date -d "this month" +%Y-%m)
+TARGET_MONTH=$(date -d "last month" +%Y-%m)
 REMOTE_DIR="/WeatherCam/${TARGET_MONTH}"
 OUT_MP4="timelapse_${TARGET_MONTH}.mp4"
 
