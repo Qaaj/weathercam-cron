@@ -44,6 +44,8 @@ DATA_URL="https://api.ambientweather.net/v1/devices?applicationKey=$AMBIENT_APP_
 DIR="cache"
 mkdir -p "$DIR"
 TIMESTAMP=$(date +%Y%m%d_%H%M%S)
+MONTH=$(date +%Y-%m)
+REMOTE_DIR="/WeatherCam/${MONTH}"
 IMG_FILE="$DIR/${TIMESTAMP}.jpg"
 JSON_FILE="$DIR/${TIMESTAMP}.json"
 LATEST_IMG="$DIR/latest.jpg"
@@ -81,10 +83,10 @@ ACCESS_TOKEN=$(curl -s -u "$APP_KEY:$APP_SECRET" \
   https://api.dropboxapi.com/oauth2/token | jq -r .access_token)
 
 curl -s -X POST https://content.dropboxapi.com/2/files/upload \
-  --header "Authorization: Bearer $ACCESS_TOKEN" \
-  --header "Dropbox-API-Arg: {\"path\": \"/WeatherCam/data/${TIMESTAMP}.json\", \"mode\": \"add\", \"autorename\": true}" \
-  --header "Content-Type: application/octet-stream" \
-  --data-binary @"$JSON_FILE"
+    --header "Authorization: Bearer $ACCESS_TOKEN" \
+    --header "Dropbox-API-Arg: {\"path\": \"${REMOTE_DIR}/data/${TIMESTAMP}.json\", \"mode\": \"add\", \"autorename\": true}" \
+    --header "Content-Type: application/octet-stream" \
+    --data-binary @"$JSON_FILE"
 
 curl -s -X POST https://content.dropboxapi.com/2/files/upload \
   --header "Authorization: Bearer $ACCESS_TOKEN" \
@@ -126,11 +128,12 @@ if [ "$hour" -ge "$SUNRISE_HOUR" ] && [ "$hour" -lt "$SUNSET_HOUR" ]; then
 
   if [ "$SHOULD_UPLOAD" -eq 1 ]; then
     echo "Uploading new image..."
-    curl -s -X POST https://content.dropboxapi.com/2/files/upload \
-      --header "Authorization: Bearer $ACCESS_TOKEN" \
-      --header "Dropbox-API-Arg: {\"path\": \"/WeatherCam/${TIMESTAMP}.jpg\", \"mode\": \"add\", \"autorename\": true}" \
-      --header "Content-Type: application/octet-stream" \
-      --data-binary @"$IMG_FILE"
+   curl -s -X POST https://content.dropboxapi.com/2/files/upload \
+    --header "Authorization: Bearer $ACCESS_TOKEN" \
+    --header "Dropbox-API-Arg: {\"path\": \"${REMOTE_DIR}/${TIMESTAMP}.jpg\", \"mode\": \"add\", \"autorename\": true}" \
+    --header "Content-Type: application/octet-stream" \
+    --data-binary @"$IMG_FILE"
+
 
     curl -s -X POST https://content.dropboxapi.com/2/files/upload \
       --header "Authorization: Bearer $ACCESS_TOKEN" \
