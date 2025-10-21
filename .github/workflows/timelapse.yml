@@ -16,7 +16,7 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y ffmpeg jq curl
 
       - name: Build & upload timelapse
-        run: bash make_monthly_timelapse.sh
+        run: bash timelapse.sh
         env:
           DROPBOX_APP_KEY: ${{ secrets.DROPBOX_APP_KEY }}
           DROPBOX_APP_SECRET: ${{ secrets.DROPBOX_APP_SECRET }}
