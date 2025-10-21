@@ -1,0 +1,23 @@
+name: Monthly WeatherCam Timelapse
+on:
+  schedule:
+    - cron: "20 2 1 * *"   # 1st of every month at 02:20 UTC
+  workflow_dispatch:
+
+jobs:
+  build-monthly-timelapse:
+    runs-on: ubuntu-latest
+    environment: Weather
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Install tools
+        run: sudo apt-get update && sudo apt-get install -y ffmpeg jq curl
+
+      - name: Build & upload timelapse
+        run: bash make_monthly_timelapse.sh
+        env:
+          DROPBOX_APP_KEY: ${{ secrets.DROPBOX_APP_KEY }}
+          DROPBOX_APP_SECRET: ${{ secrets.DROPBOX_APP_SECRET }}
+          DROPBOX_REFRESH_TOKEN: ${{ secrets.DROPBOX_REFRESH_TOKEN }}
