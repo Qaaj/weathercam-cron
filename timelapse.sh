@@ -57,7 +57,7 @@ if [ "$COUNT" -lt 2 ]; then
 fi
 
 # ---- Download images locally ----
-CACHE="timelapse_cache_${TARGET_MONTH}"
+CACHE="$(pwd)/timelapse_cache_${TARGET_MONTH}"
 mkdir -p "$CACHE"
 
 echo "📥 Downloading images..."
