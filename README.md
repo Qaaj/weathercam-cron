@@ -1,3 +1,3 @@
 # weathercam-cron
 
-updating
+updating lol
